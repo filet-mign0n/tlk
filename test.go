@@ -19,27 +19,38 @@ var connCh = make(chan net.Conn)
 
 func pollAndListen(ch chan<- net.Conn, attempts int) {
     // first try to poll for an open socket on the other end
-    ticker := time.NewTicker(time.Second)
-    i := 0
-    for t := range ticker.C {
-        i++
-        tStr := t.Format("2006-01-02 15:04:05")
-        convo.log(fmt.Sprint("dial attempt #", i, " ", tStr))
-        if i >= attempts {
-            convo.log(fmt.Sprint("exceeded ", attempts, " attempts"))
-            ticker.Stop()
-            break
+    timer := time.NewTimer(listenTimeout)
+    go func() {
+        ticker := time.NewTicker(time.Second)
+        i := 0
+        for {
+            select {
+            case t := <- ticker.C:
+                i++
+                tStr := t.Format("2006-01-02 15:04:05")
+                convo.log(fmt.Sprint("dial attempt #", i, " ", tStr))
+                if i >= attempts {
+                    convo.log(fmt.Sprint("exceeded ",
+                        attempts, " attempts",
+                    ))
+                    ticker.Stop()
+                    break
+                }
+                conn, err := net.Dial("tcp", "localhost:7777")
+                if err != nil {
+                    continue
+                }
+                ch <- conn
+                ticker.Stop()
+            case <- timer.C:
+                ticket.Stop()
+                return
+            }
         }
-        conn, err := net.Dial("tcp", "localhost:7777")
-        if err != nil {
-            continue
-        }
-        ch <- conn
-        ticker.Stop()
-    }
+    }()
+/*
     // else listen until timeout
     convo.log(fmt.Sprint("now listening"))
-    timer := time.NewTimer(listenTimeout)
     listener, _ := net.Listen("tcp", ":7777")
     for {
         conn, _ := listener.Accept()
@@ -53,7 +64,7 @@ func pollAndListen(ch chan<- net.Conn, attempts int) {
     }
     convo.log(fmt.Sprint("listen timeout"))
     close(ch)
-
+*/
 }
 
 func handleConn(c net.Conn, mode string) error {
