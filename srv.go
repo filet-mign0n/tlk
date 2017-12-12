@@ -3,9 +3,10 @@ package main
 import (
     "bufio"
     "net"
-    "fmt"
+//    "fmt"
 )
 
+/*
 type Line struct {
     impl interface{}
 }
@@ -49,26 +50,29 @@ func (l Line) Listen() {
     go l.impl.Read()
     go l.impl.Write()
 }
-
+*/
 
 type Friend struct {
-    rw *bufio.ReadWriter
-    incoming chan string
-    outgoing chan string
+    rw        *bufio.ReadWriter
+    incoming  chan string
+    outgoing  chan string
+    status    string
+    name      string
 }
 
 func (friend *Friend) Read() {
     for {
-        line, _ := friend.reader.ReadString('\n')
-        if len(line) > 0 { fmt.Println(line) }
-        friend.incoming <- line
+        line, _ := friend.rw.ReadString('\n')
+        if len(line) > 0 {
+            convo.chat(line[:len(line)-1])
+        }
     }
 }
 
 func (friend *Friend) Write() {
     for data := range friend.outgoing {
-        friend.writer.WriteString(data)
-        friend.writer.Flush()
+        friend.rw.WriteString(data+"\n")
+        friend.rw.Flush()
     }
 }
 
@@ -78,21 +82,22 @@ func (friend *Friend) Listen() {
 }
 
 func NewFriend(connection net.Conn) *Friend {
-    writer := bufio.NewWriter(connection)
-    reader := bufio.NewReader(connection)
-
-    friend := &friend{
+    rw := bufio.NewReadWriter(bufio.NewReader(connection),
+                              bufio.NewWriter(connection),
+    )
+    friend := &Friend{
+        rw:       rw,
         incoming: make(chan string),
         outgoing: make(chan string),
-        reader:   reader,
-        writer:   writer,
+        status:   "begin",
+        name:     "fox",
     }
 
     friend.Listen()
-
     return friend
 }
 
+/*
 type HandleFunc func(*bufio.ReadWriter)
 
 type ChatRoom struct {
@@ -110,7 +115,7 @@ func (chatRoom *ChatRoom) Broadcast(data string) {
 }
 
 func (chatRoom *ChatRoom) Join(connection net.Conn) {
-    friend := Newfriend(connection)
+    friend := NewFriend(connection)
     chatRoom.friend = friend
     fmt.Println("friend connected")
     go func() {
@@ -155,7 +160,7 @@ func NewClient() *Client {
 
 }
 
-func srv() {
+func erv() {
     //chatRoom := NewChatRoom()
 
     listener, _ := net.Listen("tcp", ":7777")
@@ -169,4 +174,4 @@ func srv() {
         }
     //}()
 }
-
+*/

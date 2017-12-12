@@ -2,6 +2,7 @@ package main
 
 import (
 //	"fmt"
+    "net"
 	"bytes"
 	"log"
 	"reflect"
@@ -21,13 +22,14 @@ const (
 var convo *Convo
 
 var specialKeys = map[string]string{
-	"C-8":     "_del_",
-	"<tab>":   "    ",
-	"<space>": " ",
-	"<left>":  "",
-	"<up>":    "",
-	"<right>": "",
-	"<down>":  "",
+	"C-8":      "_del_",
+	"<tab>":    "    ",
+	"<space>":  " ",
+    "<escape>": "",
+	"<left>":   "",
+	"<up>":     "",
+	"<right>":  "",
+	"<down>":   "",
 }
 
 type Convo struct {
@@ -36,6 +38,7 @@ type Convo struct {
     oHeight *int
 	MyName  string
 	LineCt  int
+    friend  *Friend
 }
 
 func(c *Convo) WriteOutput(msg string) {
@@ -57,7 +60,13 @@ func(c *Convo) WriteOutput(msg string) {
 }
 
 func(c *Convo) log(msg string) {
-    msg = "\n  ["+msg+"](fg-green)"
+    msg = "\n  [$ "+msg+"](fg-green)"
+    c.WriteOutput(msg)
+}
+
+func(c *Convo) chat(msg string) {
+    prompt := "\n [@"+c.friend.name+" ](fg-blue)"
+    msg = prompt + msg
     c.WriteOutput(msg)
 }
 
@@ -66,7 +75,11 @@ func (c *Convo) inputSubmit() {
     // TODO https://stackoverflow.com/questions/10261986/detect-string-which-contain-only-spaces
 		return
 	}
-	newChat := "\n@" + c.MyName + " > " + *c.Input
+    if c.friend != nil {
+        c.friend.outgoing <- *c.Input
+    }
+    prompt := "\n [@"+c.MyName+" ](fg-red)"
+	newChat := prompt + *c.Input
 	*c.Input = ""
     c.WriteOutput(newChat)
 }
@@ -77,8 +90,10 @@ func (c *Convo) keyInput(key string) {
 	if key == "_del_" {
 		if last := len(*c.Input) - 1; last >= 0 {
 			*c.Input = (*c.Input)[:last]
+            t.Render(t.Body)
             return
 		}
+        return
 	}
 	buffer.WriteString(*c.Input)
 	buffer.WriteString(key)
@@ -107,7 +122,7 @@ func (c *Convo) rmFirstLine() {
     }
 }
 
-func runTermui() {
+func runTermui(ch chan<- net.Conn) {
 	// Initialize termui.
 	err := t.Init()
 	if err != nil {
@@ -171,6 +186,7 @@ func runTermui() {
 	})
 	// We need a way out. Ctrl-C shall stop the event loop.
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
+        close(ch)
 		t.StopLoop()
 	})
 	t.Handle("/sys/kbd/<enter>", func(t.Event) {
