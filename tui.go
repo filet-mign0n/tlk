@@ -1,13 +1,13 @@
 package main
 
 import (
-//	"fmt"
-    "net"
+	//	"fmt"
 	"bytes"
 	"log"
+	"net"
 	"reflect"
-    "strings"
-//    "strconv"
+	"strings"
+	//    "strconv"
 	//"os"
 	t "github.com/gizak/termui"
 	//"github.com/pkg/errors"
@@ -16,7 +16,7 @@ import (
 const (
 	lw       = 20
 	ih       = 3
-    startMsg = "\n  [press Ctrl-C to quit](fg-red)\n"
+	startMsg = "\n  [press Ctrl-C to quit](fg-red)\n"
 )
 
 var convo *Convo
@@ -25,7 +25,7 @@ var specialKeys = map[string]string{
 	"C-8":      "_del_",
 	"<tab>":    "    ",
 	"<space>":  " ",
-    "<escape>": "",
+	"<escape>": "",
 	"<left>":   "",
 	"<up>":     "",
 	"<right>":  "",
@@ -35,18 +35,18 @@ var specialKeys = map[string]string{
 type Convo struct {
 	Output  *string
 	Input   *string
-    oHeight *int
+	oHeight *int
 	MyName  string
 	LineCt  int
-    friend  *Friend
+	friend  *Friend
 }
 
-func(c *Convo) WriteOutput(msg string) {
+func (c *Convo) WriteOutput(msg string) {
 	c.LineCt++
 
-	if c.LineCt > *c.oHeight-2  {
-        c.rmFirstLine()
-        c.LineCt--
+	if c.LineCt > *c.oHeight-2 {
+		c.rmFirstLine()
+		c.LineCt--
 	}
 
 	var buffer bytes.Buffer
@@ -55,33 +55,33 @@ func(c *Convo) WriteOutput(msg string) {
 	newOutput := buffer.String()
 	*c.Output = newOutput
 
-    t.Render(t.Body)
+	t.Render(t.Body)
 
 }
 
-func(c *Convo) log(msg string) {
-    msg = "\n  [$ "+msg+"](fg-green)"
-    c.WriteOutput(msg)
+func (c *Convo) log(msg string) {
+	msg = "\n  [$ " + msg + "](fg-green)"
+	c.WriteOutput(msg)
 }
 
-func(c *Convo) chat(msg string) {
-    prompt := "\n [@"+c.friend.name+" ](fg-blue)"
-    msg = prompt + msg
-    c.WriteOutput(msg)
+func (c *Convo) chat(msg string) {
+	prompt := "\n [@" + c.friend.name + " ](fg-blue)"
+	msg = prompt + msg
+	c.WriteOutput(msg)
 }
 
 func (c *Convo) inputSubmit() {
 	if *c.Input == " " {
-    // TODO https://stackoverflow.com/questions/10261986/detect-string-which-contain-only-spaces
+		// TODO https://stackoverflow.com/questions/10261986/detect-string-which-contain-only-spaces
 		return
 	}
-    if c.friend != nil {
-        c.friend.outgoing <- *c.Input
-    }
-    prompt := "\n [@"+c.MyName+" ](fg-red)"
+	if c.friend != nil {
+		c.friend.outgoing <- *c.Input
+	}
+	prompt := "\n [@" + c.MyName + " ](fg-red)"
 	newChat := prompt + *c.Input
 	*c.Input = ""
-    c.WriteOutput(newChat)
+	c.WriteOutput(newChat)
 }
 
 func (c *Convo) keyInput(key string) {
@@ -90,17 +90,17 @@ func (c *Convo) keyInput(key string) {
 	if key == "_del_" {
 		if last := len(*c.Input) - 1; last >= 0 {
 			*c.Input = (*c.Input)[:last]
-            t.Render(t.Body)
-            return
+			t.Render(t.Body)
+			return
 		}
-        return
+		return
 	}
 	buffer.WriteString(*c.Input)
 	buffer.WriteString(key)
 	newInput := buffer.String()
 	*c.Input = newInput
 
-    t.Render(t.Body)
+	t.Render(t.Body)
 }
 
 func (c *Convo) handleKey(key string) string {
@@ -111,15 +111,15 @@ func (c *Convo) handleKey(key string) string {
 }
 
 func (c *Convo) rmFirstLine() {
-    if idx := strings.Index(*c.Output, "\n"); idx != -1 {
-        //fmt.Print("BEGIN")
-        //fmt.Print(*c.Output)
-        //fmt.Println("END")
-        //fmt.Println((*c.Output)[idx:])
-        output := *c.Output
-        *c.Output = output[idx+1:]
-        t.Render(t.Body)
-    }
+	if idx := strings.Index(*c.Output, "\n"); idx != -1 {
+		//fmt.Print("BEGIN")
+		//fmt.Print(*c.Output)
+		//fmt.Println("END")
+		//fmt.Println((*c.Output)[idx:])
+		output := *c.Output
+		*c.Output = output[idx+1:]
+		t.Render(t.Body)
+	}
 }
 
 func runTermui(ch chan<- net.Conn) {
@@ -167,9 +167,9 @@ func runTermui(ch chan<- net.Conn) {
 	convo = &Convo{
 		Output:  &ob.Text,
 		Input:   &ib.Text,
-        oHeight: &ob.Height,
+		oHeight: &ob.Height,
 		MyName:  "frog",
-		LineCt: 3,
+		LineCt:  3,
 	}
 	// Render the grid.
 	t.Body.Align()
@@ -186,13 +186,13 @@ func runTermui(ch chan<- net.Conn) {
 	})
 	// We need a way out. Ctrl-C shall stop the event loop.
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
-        close(ch)
+		close(ch)
 		t.StopLoop()
 	})
 	t.Handle("/sys/kbd/<enter>", func(t.Event) {
-        if len(*convo.Input) > 0 {
-            convo.inputSubmit()
-        }
+		if len(*convo.Input) > 0 {
+			convo.inputSubmit()
+		}
 	})
 	t.Handle("/sys/kbd", func(e t.Event) {
 		// handle all other key presses

@@ -1,9 +1,9 @@
 package main
 
 import (
-    "bufio"
-    "net"
-//    "fmt"
+	"bufio"
+	"net"
+	//    "fmt"
 )
 
 /*
@@ -53,48 +53,48 @@ func (l Line) Listen() {
 */
 
 type Friend struct {
-    rw        *bufio.ReadWriter
-    incoming  chan string
-    outgoing  chan string
-    status    string
-    name      string
+	rw       *bufio.ReadWriter
+	incoming chan string
+	outgoing chan string
+	status   string
+	name     string
 }
 
 func (friend *Friend) Read() {
-    for {
-        line, _ := friend.rw.ReadString('\n')
-        if len(line) > 0 {
-            convo.chat(line[:len(line)-1])
-        }
-    }
+	for {
+		line, _ := friend.rw.ReadString('\n')
+		if len(line) > 0 {
+			convo.chat(line[:len(line)-1])
+		}
+	}
 }
 
 func (friend *Friend) Write() {
-    for data := range friend.outgoing {
-        friend.rw.WriteString(data+"\n")
-        friend.rw.Flush()
-    }
+	for data := range friend.outgoing {
+		friend.rw.WriteString(data + "\n")
+		friend.rw.Flush()
+	}
 }
 
 func (friend *Friend) Listen() {
-    go friend.Read()
-    go friend.Write()
+	go friend.Read()
+	go friend.Write()
 }
 
 func NewFriend(connection net.Conn) *Friend {
-    rw := bufio.NewReadWriter(bufio.NewReader(connection),
-                              bufio.NewWriter(connection),
-    )
-    friend := &Friend{
-        rw:       rw,
-        incoming: make(chan string),
-        outgoing: make(chan string),
-        status:   "begin",
-        name:     "fox",
-    }
+	rw := bufio.NewReadWriter(bufio.NewReader(connection),
+		bufio.NewWriter(connection),
+	)
+	friend := &Friend{
+		rw:       rw,
+		incoming: make(chan string),
+		outgoing: make(chan string),
+		status:   "begin",
+		name:     "fox",
+	}
 
-    friend.Listen()
-    return friend
+	friend.Listen()
+	return friend
 }
 
 /*
