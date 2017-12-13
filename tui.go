@@ -30,6 +30,8 @@ var specialKeys = map[string]string{
 	"<up>":     "",
 	"<right>":  "",
 	"<down>":   "",
+    "[":        "",
+    "]":        "",
 }
 
 type Convo struct {
@@ -60,7 +62,7 @@ func (c *Convo) WriteOutput(msg string) {
 }
 
 func (c *Convo) log(msg string) {
-	msg = "\n  [$ " + msg + "](fg-green)"
+	msg = "\n [$ " + msg + "](fg-green)"
 	c.WriteOutput(msg)
 }
 
@@ -139,7 +141,7 @@ func runTermui(ch chan<- net.Conn) {
 	// a text input widget.
 	ib := t.NewPar("")
 	ib.Height = ih
-	ib.BorderLabel = "Message"
+	//ib.BorderLabel = "Message"
 	ib.BorderLabelFg = t.ColorYellow
 	ib.BorderFg = t.ColorYellow
 	ib.TextFgColor = t.ColorWhite
@@ -147,7 +149,7 @@ func runTermui(ch chan<- net.Conn) {
 	// The Output block.
 	ob := t.NewPar(startMsg)
 	ob.Height = th - ih
-	ob.BorderLabel = "Convo"
+	ob.BorderLabel = "tlk"
 	ob.BorderLabelFg = t.ColorCyan
 	ob.BorderFg = t.ColorCyan
 	ob.TextFgColor = t.ColorWhite
@@ -186,8 +188,8 @@ func runTermui(ch chan<- net.Conn) {
 	})
 	// We need a way out. Ctrl-C shall stop the event loop.
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
-		close(ch)
 		t.StopLoop()
+		close(ch)
 	})
 	t.Handle("/sys/kbd/<enter>", func(t.Event) {
 		if len(*convo.Input) > 0 {

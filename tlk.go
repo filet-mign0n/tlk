@@ -1,21 +1,26 @@
 package main
 
 import (
-	//    "errors"
-	//"bufio"
+    "os"
 	"fmt"
 	"net"
+    "flag"
 	"time"
-	//tui "github.com/gizak/termui"
 )
 
 const (
 	connAttempts = 3
-	host         = "localhost"
-	port         = ":7777"
 )
 
-var ch = make(chan net.Conn)
+var (
+    ch = make(chan net.Conn)
+
+    key =     flag.String("k", "mKHlhb797Yp9olUi", "aes key")
+    host =    flag.String("h", "localhost", "host")
+    port =    flag.String("p", "7777", "port")
+    debug =   flag.Bool("d", false, "debug")
+    verbose = flag.Bool("v", false, "verbose")
+)
 
 func handleConn(c net.Conn) *Friend {
 	convo.log("handling conn")
@@ -35,7 +40,7 @@ func clt() (net.Conn, bool) {
 			ticker.Stop()
 			return nil, false
 		}
-		conn, err := net.Dial("tcp", host+port)
+        conn, err := net.Dial("tcp", *host +":"+ *port)
 		if err != nil {
 			continue
 		}
@@ -48,10 +53,10 @@ func clt() (net.Conn, bool) {
 
 func srv() net.Conn {
 	convo.log("entering server mode")
-	listener, _ := net.Listen("tcp", port)
+    listener, _ := net.Listen("tcp", ":"+ *port)
 	for {
 		conn, _ := listener.Accept()
-		convo.log(fmt.Sprint("server got conn from: ", conn.RemoteAddr))
+		convo.log(fmt.Sprint(conn.RemoteAddr().String(), " connected"))
 		return conn
 	}
 }
@@ -65,13 +70,8 @@ func main() {
 	}
 	f := handleConn(c)
 	convo.friend = f
-	if ok {
-		// time.Sleep(2*time.Second)
-		// f.rw.WriteString("Why Hello\n")
-		// f.rw.Flush()
-	}
 
 	for _ = range ch {
 	}
-	convo.log("closing shop")
+    os.Exit(0)
 }

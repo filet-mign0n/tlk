@@ -3,54 +3,7 @@ package main
 import (
 	"bufio"
 	"net"
-	//    "fmt"
 )
-
-/*
-type Line struct {
-    impl interface{}
-}
-
-func New (l LineImpl) *Line {
-    return &Line{l}
-}
-
-func NewLine(connection net.Conn) *Line {
-    writer := bufio.NewWriter(connection)
-    reader := bufio.NewReader(connection)
-
-    impl := interface{
-        incoming: make(chan string),
-        outgoing: make(chan string),
-        reader:   reader,
-        writer:   writer,
-    }
-
-    friend.Listen()
-
-    return friend
-}
-
-func (l Line) Read() {
-    for {
-        msg, _ := l.impl.reader.ReadString("\n")
-        if len(msg) > 0 { fmt.Println(msg) }
-        friend.incoming <- line
-    }
-}
-
-func (l Line) Write() {
-    for data := range l.impl.outgoing {
-        l.impl.writer.WriteString(data)
-        l.impl.writer.Flush()
-    }
-}
-
-func (l Line) Listen() {
-    go l.impl.Read()
-    go l.impl.Write()
-}
-*/
 
 type Friend struct {
 	rw       *bufio.ReadWriter
@@ -58,20 +11,26 @@ type Friend struct {
 	outgoing chan string
 	status   string
 	name     string
+    key      []byte
 }
 
 func (friend *Friend) Read() {
 	for {
 		line, _ := friend.rw.ReadString('\n')
 		if len(line) > 0 {
-			convo.chat(line[:len(line)-1])
+            decryptMsg, _ := decrypt(friend.key, line[:len(line)-1])
+			convo.chat(decryptMsg[:len(decryptMsg)-1])
 		}
 	}
 }
 
 func (friend *Friend) Write() {
 	for data := range friend.outgoing {
-		friend.rw.WriteString(data + "\n")
+        data = data + "\n"
+        data, _ := encrypt(friend.key, data)
+        //convo.log("crypto: "+data)
+        data = data + "\n"
+		friend.rw.WriteString(data)
 		friend.rw.Flush()
 	}
 }
@@ -91,6 +50,7 @@ func NewFriend(connection net.Conn) *Friend {
 		outgoing: make(chan string),
 		status:   "begin",
 		name:     "fox",
+        key:      []byte(*key),
 	}
 
 	friend.Listen()
