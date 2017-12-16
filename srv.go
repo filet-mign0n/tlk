@@ -1,86 +1,150 @@
 package main
 
 import (
+    "io"
 	"bufio"
 	"net"
+	"sync"
 )
 
 type Friend struct {
-	rw       *bufio.ReadWriter
-	incoming chan string
-	outgoing chan string
-	status   string
-	name     string
-    key      []byte
+	conn   net.Conn
+	rw     *bufio.ReadWriter
+	wg     *sync.WaitGroup
+	in     chan string
+	out    chan string
+	off    chan int
+	status string
+	name   string
+	key    []byte
 }
 
-func (friend *Friend) Read() {
+func (f *Friend) Read() {
+	defer f.wg.Done()
 	for {
-		line, _ := friend.rw.ReadString('\n')
-		if len(line) > 0 {
-            decryptMsg, _ := decrypt(friend.key, line[:len(line)-1])
+		select {
+		case line := <-f.in:
+			decryptMsg, err := decrypt(f.key, line[:len(line)-1])
+			if err != nil {
+				convo.log(err.Error())
+                continue
+			}
 			convo.chat(decryptMsg[:len(decryptMsg)-1])
+		case _ = <-f.off:
+			return
 		}
 	}
 }
 
-func (friend *Friend) Write() {
-	for data := range friend.outgoing {
-        data = data + "\n"
-        data, _ := encrypt(friend.key, data)
-        //convo.log("crypto: "+data)
-        data = data + "\n"
-		friend.rw.WriteString(data)
-		friend.rw.Flush()
+// no need to seperate!
+// https://gist.github.com/rcrowley/5474430
+func (f *Friend) ReadConn() {
+    defer f.wg.Done()
+    defer f.conn.Close()
+	for {
+		line, err := f.rw.ReadString('\n')
+        switch {
+        // doesn't seem to work like with EOF of net.Conn
+        case err == io.EOF:
+            convo.log("friend left, closing conn")
+            close(f.off)
+            return
+        case err != nil:
+            convo.log("friend ReadConn")
+			convo.log(err.Error())
+            return
+        }
+		if len(line) > 0 {
+			f.in <- line
+		}
 	}
 }
 
-func (friend *Friend) Listen() {
-	go friend.Read()
-	go friend.Write()
+func (f *Friend) Write() {
+	defer f.wg.Done()
+	for {
+		select {
+		case data := <-f.out:
+			data = data + "\n"
+			data, err := encrypt(f.key, data)
+			if err != nil {
+				convo.log(err.Error())
+				continue
+			}
+			if *debug {
+				convo.log("crypto: " + data)
+			}
+			data = data + "\n"
+			f.rw.WriteString(data)
+			f.rw.Flush()
+		case <-f.off:
+			return
+		}
+	}
 }
 
-func NewFriend(connection net.Conn) *Friend {
-	rw := bufio.NewReadWriter(bufio.NewReader(connection),
-		bufio.NewWriter(connection),
+func (f *Friend) Listen() {
+	f.wg.Add(3)
+    go f.ReadConn()
+	go f.Read()
+	go f.Write()
+    /*
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-f.off:
+				f.conn.Close()
+			}
+		}
+	}()
+    */
+}
+
+func NewFriend(conn net.Conn) *Friend {
+	rw := bufio.NewReadWriter(bufio.NewReader(conn),
+		bufio.NewWriter(conn),
 	)
-	friend := &Friend{
-		rw:       rw,
-		incoming: make(chan string),
-		outgoing: make(chan string),
-		status:   "begin",
-		name:     "fox",
-        key:      []byte(*key),
+	f := &Friend{
+		conn:   conn,
+		rw:     rw,
+		wg:     &sync.WaitGroup{},
+		in:     make(chan string),
+		out:    make(chan string),
+		off:    offCh,
+		status: "noauth",
+		name:   "fox",
+		key:    []byte(*key),
 	}
 
-	friend.Listen()
-	return friend
+	f.Listen()
+	return f
 }
 
 /*
 type HandleFunc func(*bufio.ReadWriter)
 
 type ChatRoom struct {
-    friend   *Friend
+    f   *Friend
     joins    chan net.Conn
-    incoming chan string
-    outgoing chan string
+    in chan string
+    out chan string
     handler  map[string]HandleFunc
 }
 
 func (chatRoom *ChatRoom) Broadcast(data string) {
-    for _, friend := range chatRoom.friend {
-        friend.outgoing <- data
+    for _, f := range chatRoom.f {
+        f.out <- data
     }
 }
 
 func (chatRoom *ChatRoom) Join(connection net.Conn) {
-    friend := NewFriend(connection)
-    chatRoom.friend = friend
-    fmt.Println("friend connected")
+    f := NewFriend(connection)
+    chatRoom.f = f
+    fmt.Println("f connected")
     go func() {
         for {
-            chatRoom.incoming <- <-friend.incoming
+            chatRoom.in <- <-f.in
         }
     }()
 }
@@ -89,7 +153,7 @@ func (chatRoom *ChatRoom) Listen() {
     go func() {
         for {
             select {
-            case data := <-chatRoom.incoming:
+            case data := <-chatRoom.in:
                 chatRoom.Broadcast(data)
             case conn := <-chatRoom.joins:
                 chatRoom.Join(conn)
@@ -100,10 +164,10 @@ func (chatRoom *ChatRoom) Listen() {
 
 func NewChatRoom() *ChatRoom {
     chatRoom := &ChatRoom{
-        friend:   *Friend,
+        f:   *Friend,
         joins:    make(chan net.Conn),
-        incoming: make(chan string),
-        outgoing: make(chan string),
+        in: make(chan string),
+        out: make(chan string),
     }
 
     chatRoom.Listen()

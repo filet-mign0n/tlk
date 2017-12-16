@@ -1,10 +1,11 @@
 package main
 
 import (
-    "os"
+	"flag"
 	"fmt"
 	"net"
-    "flag"
+	"os"
+	"sync"
 	"time"
 )
 
@@ -13,13 +14,15 @@ const (
 )
 
 var (
-    ch = make(chan net.Conn)
+	ch    = make(chan net.Conn)
+	offCh = make(chan int)
+	wg    = &sync.WaitGroup{}
 
-    key =     flag.String("k", "mKHlhb797Yp9olUi", "aes key")
-    host =    flag.String("h", "localhost", "host")
-    port =    flag.String("p", "7777", "port")
-    debug =   flag.Bool("d", false, "debug")
-    verbose = flag.Bool("v", false, "verbose")
+	key     = flag.String("k", "mKHlhb797Yp9olUi", "aes key")
+	host    = flag.String("h", "localhost", "host")
+	port    = flag.String("p", "7777", "port")
+	debug   = flag.Bool("d", false, "debug")
+	verbose = flag.Bool("v", false, "verbose")
 )
 
 func handleConn(c net.Conn) *Friend {
@@ -40,7 +43,7 @@ func clt() (net.Conn, bool) {
 			ticker.Stop()
 			return nil, false
 		}
-        conn, err := net.Dial("tcp", *host +":"+ *port)
+		conn, err := net.Dial("tcp", *host+":"+*port)
 		if err != nil {
 			continue
 		}
@@ -52,8 +55,9 @@ func clt() (net.Conn, bool) {
 }
 
 func srv() net.Conn {
-	convo.log("entering server mode")
-    listener, _ := net.Listen("tcp", ":"+ *port)
+    // add close logic here
+	listener, _ := net.Listen("tcp", ":"+*port)
+	convo.log(fmt.Sprint("listening on", listener.Addr()))
 	for {
 		conn, _ := listener.Accept()
 		convo.log(fmt.Sprint(conn.RemoteAddr().String(), " connected"))
@@ -62,16 +66,18 @@ func srv() net.Conn {
 }
 
 func main() {
-	go runTermui(ch)
+	wg.Add(1)
+	go runTermui(ch, wg)
 
 	c, ok := clt()
 	if !ok {
 		c = srv()
 	}
 	f := handleConn(c)
-	convo.friend = f
+	f.Listen()
+	convo.f = f
 
-	for _ = range ch {
-	}
-    os.Exit(0)
+	wg.Wait()
+	fmt.Println("wait done")
+	os.Exit(0)
 }

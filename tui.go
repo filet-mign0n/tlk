@@ -1,16 +1,14 @@
 package main
 
 import (
-	//	"fmt"
 	"bytes"
 	"log"
 	"net"
 	"reflect"
 	"strings"
-	//    "strconv"
-	//"os"
+	"sync"
+
 	t "github.com/gizak/termui"
-	//"github.com/pkg/errors"
 )
 
 const (
@@ -30,8 +28,8 @@ var specialKeys = map[string]string{
 	"<up>":     "",
 	"<right>":  "",
 	"<down>":   "",
-    "[":        "",
-    "]":        "",
+	"[":        "",
+	"]":        "",
 }
 
 type Convo struct {
@@ -40,7 +38,7 @@ type Convo struct {
 	oHeight *int
 	MyName  string
 	LineCt  int
-	friend  *Friend
+	f       *Friend
 }
 
 func (c *Convo) WriteOutput(msg string) {
@@ -67,18 +65,17 @@ func (c *Convo) log(msg string) {
 }
 
 func (c *Convo) chat(msg string) {
-	prompt := "\n [@" + c.friend.name + " ](fg-blue)"
+	prompt := "\n [@" + c.f.name + " ](fg-blue)"
 	msg = prompt + msg
 	c.WriteOutput(msg)
 }
 
 func (c *Convo) inputSubmit() {
 	if *c.Input == " " {
-		// TODO https://stackoverflow.com/questions/10261986/detect-string-which-contain-only-spaces
 		return
 	}
-	if c.friend != nil {
-		c.friend.outgoing <- *c.Input
+	if c.f != nil {
+		c.f.out <- *c.Input
 	}
 	prompt := "\n [@" + c.MyName + " ](fg-red)"
 	newChat := prompt + *c.Input
@@ -114,26 +111,21 @@ func (c *Convo) handleKey(key string) string {
 
 func (c *Convo) rmFirstLine() {
 	if idx := strings.Index(*c.Output, "\n"); idx != -1 {
-		//fmt.Print("BEGIN")
-		//fmt.Print(*c.Output)
-		//fmt.Println("END")
-		//fmt.Println((*c.Output)[idx:])
 		output := *c.Output
 		*c.Output = output[idx+1:]
 		t.Render(t.Body)
 	}
 }
 
-func runTermui(ch chan<- net.Conn) {
-	// Initialize termui.
+func runTermui(ch chan<- net.Conn, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	err := t.Init()
 	if err != nil {
 		log.Fatalln("Cannot initialize termui")
 	}
-	// `termui` needs some cleanup when terminating.
 	defer t.Close()
 
-	// Get the height of the terminal.
 	th := t.TermHeight()
 
 	// The input block. termui has no edit box yet, but at the time of
@@ -188,8 +180,11 @@ func runTermui(ch chan<- net.Conn) {
 	})
 	// We need a way out. Ctrl-C shall stop the event loop.
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
+		if convo.f != nil {
+			close(convo.f.off)
+		}
 		t.StopLoop()
-		close(ch)
+		return
 	})
 	t.Handle("/sys/kbd/<enter>", func(t.Event) {
 		if len(*convo.Input) > 0 {
@@ -202,6 +197,5 @@ func runTermui(ch chan<- net.Conn) {
 		s := v.Field(0)
 		convo.keyInput(s.String())
 	})
-	// start the event loop.
 	t.Loop()
 }
