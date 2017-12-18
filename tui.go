@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"log"
-	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -74,9 +73,10 @@ func (c *Convo) inputSubmit() {
 	if *c.Input == " " {
 		return
 	}
-	if c.f != nil {
+	if c.f != nil && c.f.conn != nil {
+        convo.log("sending to f.out")
 		c.f.out <- *c.Input
-	}
+	} else { convo.log("no c.f?") }
 	prompt := "\n [@" + c.MyName + " ](fg-red)"
 	newChat := prompt + *c.Input
 	*c.Input = ""
@@ -117,7 +117,7 @@ func (c *Convo) rmFirstLine() {
 	}
 }
 
-func runTermui(ch chan<- net.Conn, wg *sync.WaitGroup) {
+func tui(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	err := t.Init()
@@ -178,11 +178,13 @@ func runTermui(ch chan<- net.Conn, wg *sync.WaitGroup) {
 		t.Body.Align()
 		t.Render(t.Body)
 	})
+    // Way to test the off channel w/o killing tui session
+	t.Handle("/sys/kbd/C-d", func(t.Event) {
+        close(off)
+    })
 	// We need a way out. Ctrl-C shall stop the event loop.
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
-		if convo.f != nil {
-			close(convo.f.off)
-		}
+        close(off)
 		t.StopLoop()
 		return
 	})

@@ -2,6 +2,7 @@ package main
 
 import (
     "io"
+//    "time"
 	"bufio"
 	"net"
 	"sync"
@@ -11,7 +12,6 @@ type Friend struct {
 	conn   net.Conn
 	rw     *bufio.ReadWriter
 	wg     *sync.WaitGroup
-	in     chan string
 	out    chan string
 	off    chan int
 	status string
@@ -21,84 +21,76 @@ type Friend struct {
 
 func (f *Friend) Read() {
 	defer f.wg.Done()
-	for {
-		select {
-		case line := <-f.in:
-			decryptMsg, err := decrypt(f.key, line[:len(line)-1])
-			if err != nil {
-				convo.log(err.Error())
-                continue
-			}
-			convo.chat(decryptMsg[:len(decryptMsg)-1])
-		case _ = <-f.off:
-			return
-		}
-	}
-}
-
-// no need to seperate!
-// https://gist.github.com/rcrowley/5474430
-func (f *Friend) ReadConn() {
-    defer f.wg.Done()
-    defer f.conn.Close()
-	for {
-		line, err := f.rw.ReadString('\n')
-        switch {
-        // doesn't seem to work like with EOF of net.Conn
-        case err == io.EOF:
-            convo.log("friend left, closing conn")
-            close(f.off)
-            return
-        case err != nil:
-            convo.log("friend ReadConn")
-			convo.log(err.Error())
-            return
+    OFF:
+        for {
+            select {
+            case <-off:
+                convo.log("f.Read got off")
+                //time.Sleep(time.Second*4)
+                return
+            default:
+                goto rwRead
+            }
         }
-		if len(line) > 0 {
-			f.in <- line
-		}
-	}
+    rwRead:
+        for {
+            line, err := f.rw.ReadString('\n')
+            //f.conn.SetReadDeadline(time.Now().Add(1e9))
+            switch {
+            // doesn't seem to work like with EOF of net.Conn
+            case err == io.EOF:
+                convo.log("friend left, closing conn")
+                close(off)
+                return
+            case err != nil:
+                convo.log("friend ReadConn")
+                convo.log(err.Error())
+                return
+            case len(line) > 0:
+                decryptMsg, err := decrypt(f.key, line[:len(line)-1])
+                if err != nil {
+                    convo.log(err.Error())
+                }
+                convo.chat(decryptMsg[:len(decryptMsg)-1])
+                goto OFF
+            }
+        }
 }
 
 func (f *Friend) Write() {
 	defer f.wg.Done()
-	for {
-		select {
-		case data := <-f.out:
-			data = data + "\n"
-			data, err := encrypt(f.key, data)
-			if err != nil {
-				convo.log(err.Error())
-				continue
-			}
-			if *debug {
-				convo.log("crypto: " + data)
-			}
-			data = data + "\n"
-			f.rw.WriteString(data)
-			f.rw.Flush()
-		case <-f.off:
-			return
-		}
-	}
+    for {
+        //f.conn.SetWriteDeadline(time.Now().Add(1e9))
+        select {
+        case data := <-f.out:
+            data = data + "\n"
+            data, err := encrypt(f.key, data)
+            if err != nil {
+                convo.log(err.Error())
+                continue
+            }
+            if *debug {
+                convo.log("crypto: " + data)
+            }
+            data = data + "\n"
+            f.rw.WriteString(data)
+            f.rw.Flush()
+        case <-off:
+            convo.log("Write got off")
+            return
+        }
+    }
 }
 
 func (f *Friend) Listen() {
-	f.wg.Add(3)
-    go f.ReadConn()
+    defer wg.Done()
+	f.wg.Add(2)
 	go f.Read()
 	go f.Write()
-    /*
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-f.off:
-				f.conn.Close()
-			}
-		}
-	}()
-    */
+    f.wg.Wait()
+    convo.log("f.wg.Wait()")
+    f.conn.Close()
+    f.conn = nil
 }
 
 func NewFriend(conn net.Conn) *Friend {
@@ -109,15 +101,12 @@ func NewFriend(conn net.Conn) *Friend {
 		conn:   conn,
 		rw:     rw,
 		wg:     &sync.WaitGroup{},
-		in:     make(chan string),
 		out:    make(chan string),
-		off:    offCh,
+		off:    off,
 		status: "noauth",
 		name:   "fox",
 		key:    []byte(*key),
 	}
-
-	f.Listen()
 	return f
 }
 
