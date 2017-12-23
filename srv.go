@@ -2,7 +2,7 @@ package main
 
 import (
     "io"
-//    "time"
+//  "time"
 	"bufio"
 	"net"
 	"sync"
@@ -13,6 +13,7 @@ type Friend struct {
 	rw     *bufio.ReadWriter
 	wg     *sync.WaitGroup
 	out    chan string
+	in     chan string
 	off    chan int
 	status string
 	name   string
@@ -21,40 +22,42 @@ type Friend struct {
 
 func (f *Friend) Read() {
 	defer f.wg.Done()
-    OFF:
-        for {
-            select {
-            case <-off:
-                convo.log("f.Read got off")
-                //time.Sleep(time.Second*4)
-                return
-            default:
-                goto rwRead
-            }
-        }
-    rwRead:
-        for {
-            line, err := f.rw.ReadString('\n')
-            //f.conn.SetReadDeadline(time.Now().Add(1e9))
-            switch {
-            // doesn't seem to work like with EOF of net.Conn
-            case err == io.EOF:
-                convo.log("friend left, closing conn")
-                close(off)
-                return
-            case err != nil:
-                convo.log("friend ReadConn")
+    for {
+        select {
+        case <-off:
+            convo.log("f.Read got off")
+            //time.Sleep(time.Second*4)
+            return
+        case line:= <-f.in:
+            decryptMsg, err := decrypt(f.key, line[:len(line)-1])
+            if err != nil {
                 convo.log(err.Error())
-                return
-            case len(line) > 0:
-                decryptMsg, err := decrypt(f.key, line[:len(line)-1])
-                if err != nil {
-                    convo.log(err.Error())
-                }
-                convo.chat(decryptMsg[:len(decryptMsg)-1])
-                goto OFF
             }
+            convo.chat(decryptMsg[:len(decryptMsg)-1])
         }
+    }
+}
+
+func (f *Friend) ReadConn() {
+    f.wg.Done()
+    for {
+        line, err := f.rw.ReadString('\n')
+        //f.conn.SetReadDeadline(time.Now().Add(1e9))
+        // doesn't seem to work like with EOF of net.Conn
+        if err == io.EOF {
+            convo.log("friend left, closing conn")
+            close(off)
+            return
+        }
+        if err != nil {
+            convo.log("friend ReadConn")
+            convo.log(err.Error())
+            return
+        }
+        if len(line) > 0 {
+            f.in <- line
+        }
+    }
 }
 
 func (f *Friend) Write() {
@@ -84,13 +87,16 @@ func (f *Friend) Write() {
 
 func (f *Friend) Listen() {
     defer wg.Done()
-	f.wg.Add(2)
+	f.wg.Add(3)
+    go f.ReadConn()
 	go f.Read()
 	go f.Write()
     f.wg.Wait()
-    convo.log("f.wg.Wait()")
+    convo.log("Listen() f.wg.Wait()")
     f.conn.Close()
     f.conn = nil
+    wg.Add(1)
+    go seek()
 }
 
 func NewFriend(conn net.Conn) *Friend {
@@ -102,6 +108,7 @@ func NewFriend(conn net.Conn) *Friend {
 		rw:     rw,
 		wg:     &sync.WaitGroup{},
 		out:    make(chan string),
+		in:     make(chan string),
 		off:    off,
 		status: "noauth",
 		name:   "fox",
@@ -109,82 +116,3 @@ func NewFriend(conn net.Conn) *Friend {
 	}
 	return f
 }
-
-/*
-type HandleFunc func(*bufio.ReadWriter)
-
-type ChatRoom struct {
-    f   *Friend
-    joins    chan net.Conn
-    in chan string
-    out chan string
-    handler  map[string]HandleFunc
-}
-
-func (chatRoom *ChatRoom) Broadcast(data string) {
-    for _, f := range chatRoom.f {
-        f.out <- data
-    }
-}
-
-func (chatRoom *ChatRoom) Join(connection net.Conn) {
-    f := NewFriend(connection)
-    chatRoom.f = f
-    fmt.Println("f connected")
-    go func() {
-        for {
-            chatRoom.in <- <-f.in
-        }
-    }()
-}
-
-func (chatRoom *ChatRoom) Listen() {
-    go func() {
-        for {
-            select {
-            case data := <-chatRoom.in:
-                chatRoom.Broadcast(data)
-            case conn := <-chatRoom.joins:
-                chatRoom.Join(conn)
-            }
-        }
-    }()
-}
-
-func NewChatRoom() *ChatRoom {
-    chatRoom := &ChatRoom{
-        f:   *Friend,
-        joins:    make(chan net.Conn),
-        in: make(chan string),
-        out: make(chan string),
-    }
-
-    chatRoom.Listen()
-
-    return chatRoom
-}
-
-func NewClient() *Client {
-    conn, err := net.Dial("tcp", addr)
-    if err != nil {
-        return nil, fmt.Println(err, "Dialing "+addr+" failed")
-    }
-    return bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
-
-}
-
-func erv() {
-    //chatRoom := NewChatRoom()
-
-    listener, _ := net.Listen("tcp", ":7777")
-
-    //go func() {
-        for {
-            conn, _ := listener.Accept()
-            fmt.Println("got conn")
-            conn.Close()
-            //chatRoom.joins <- conn
-        }
-    //}()
-}
-*/

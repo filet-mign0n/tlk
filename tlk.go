@@ -25,20 +25,12 @@ var (
 
 func hdl() {
     defer wg.Done()
-    OFF:
-        for {
-            select {
-            case <-off:
-                convo.log("hdl got off")
-                //time.Sleep(time.Second*4)
-                return
-            default:
-                goto Wait4Conn
-            }
-        }
-    Wait4Conn:
     for {
         select {
+        case <-off:
+            convo.log("hdl got off")
+            //time.Sleep(time.Second*4)
+            return
         case conn := <-connCh:
             if convo.f == nil {
                 convo.log("handling conn")
@@ -49,9 +41,6 @@ func hdl() {
             } else {
                 convo.log("hdl got another conn")
             }
-            //fallthrough
-        default:
-            goto OFF
         }
     }
 }
@@ -91,17 +80,20 @@ func clt() (bool) {
     return false
 }
 
+// pass wg as arg
 func srv() bool {
     defer wg.Done()
 	listener, _ := net.Listen("tcp", ":"+*port)
-    defer listener.Close()
 	convo.log(fmt.Sprint("listening on ", listener.Addr()))
+    defer listener.Close()
 
     wg.Add(1)
     go func() {
         defer wg.Done()
         for {
             conn, err := listener.Accept()
+            convo.log("go routine inside srv() started")
+            convo.log(time.Now().String())
             if nil != err {
                 if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
                     convo.log("OpError.Timeout")
@@ -138,10 +130,8 @@ func logOff() {
     }
 }
 
-
-func main() {
-	wg.Add(1)
-	go tui(wg)
+func seek() {
+    defer wg.Done()
     wg.Add(1)
     go hdl()
 	wg.Add(1)
@@ -151,6 +141,13 @@ func main() {
         wg.Add(1)
         go srv()
     }
+}
+
+func main() {
+	wg.Add(1)
+	go tui(wg)
+	wg.Add(1)
+    go seek()
 	wg.Wait()
 	fmt.Println("wait done")
 	os.Exit(0)
