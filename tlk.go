@@ -30,6 +30,8 @@ type tlkConn struct {
 }
 
 func init() {
+    flag.Parse()
+
     off    = make(chan int)
     disct  = make(chan int)
     connCh = make(chan *tlkConn)
@@ -41,44 +43,56 @@ func hdl(wg *sync.WaitGroup) {
     for {
         select {
         case <-off:
-            convo.log("hdl got off")
+            convo.log("d", "hdl <-off")
             return
         case <-disct:
-            convo.log("hdl got disct")
+            convo.log("d", "hdl <-disct")
             if (convo.f != nil) {
-                mode := convo.f.mode
                 convo.f.conn.Close()
                 convo.f.conn = nil
                 convo.f = nil
-                if (mode == "clt") {
-                    wg.Add(1)
-                    go seek(wg)
-                }
+                wg.Add(1)
+                go seek(wg)
             }
             disct = make(chan int)
         case tlkc := <-connCh:
             if convo.f == nil {
-                convo.log("handling conn")
+                convo.log(
+                    "d",
+                    "handling conn from: ",
+                    tlkc.conn.RemoteAddr(),
+                )
                 friend := NewFriend(tlkc)
                 convo.f = friend
                 wg.Add(1)
                 go friend.Listen(wg)
             } else {
-                convo.log("hdl already has open conn")
+                convo.log("e", "hdl already has open conn")
+                convo.log(
+                    "e",
+                    "attempt from: ",
+                    tlkc.conn.RemoteAddr(),
+                    " mode: ",
+                    tlkc.mode,
+                )
+                tlkc.conn.Close()
             }
         }
     }
 }
 
-func clt() (bool) {
+func clt() bool {
 	ticker := time.NewTicker(time.Second)
+    time.Sleep(time.Second)
+    convo.log("l", "dialing " + *host+":"+*port)
+
     defer ticker.Stop()
 	i := 0
     OFF:
         for {
             select {
             case <-off:
-                convo.log("clt got off")
+                convo.log("d", "clt got off")
                 return false
             default:
                 goto POLL
@@ -88,59 +102,58 @@ func clt() (bool) {
         for t := range ticker.C {
             i++
             tStr := t.Format("2006-01-02 15:04:05")
-            convo.log(fmt.Sprint("dial attempt #", i, " ", tStr))
+            convo.log("d", "dial attempt #", i, " ", tStr)
             if i >= connAttempts {
-                convo.log(fmt.Sprint("exceeded ", connAttempts, " attempts"))
+                convo.log("d", "exceeded ", connAttempts, " dial attempts")
                 return false
             }
             conn, err := net.Dial("tcp", *host+":"+*port)
             if err != nil {
                 goto OFF
             }
-            convo.log("Dial successful")
+            convo.log("s", "dial successful")
             connCh <- &tlkConn{conn: conn, mode: "clt"}
             return true
         }
     return false
 }
 
-// pass wg as arg
 func srv(wg *sync.WaitGroup) {
     defer wg.Done()
 	listener, e := net.Listen("tcp", ":"+*port)
     if e != nil {
-        convo.log("srv error")
+        convo.log("e", "srv error")
         convo.log(e.Error())
     }
-	convo.log(fmt.Sprint("listening on ", listener.Addr()))
-    defer listener.Close()
+	convo.log("l", "listening on ", listener.Addr())
 
     wg.Add(1)
-    go func() {
+    go func(wg *sync.WaitGroup) {
       defer wg.Done()
         for {
             conn, err := listener.Accept()
-            convo.log("go routine inside srv() started")
-            convo.log(time.Now().String())
             if nil != err {
-                if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-                    convo.log("OpError.Timeout")
+                if opErr, ok := err.(*net.OpError); ok &&
+                    opErr.Timeout() {
+                    convo.log("e", "net.OpError.Timeout")
                     continue
                 }
-                convo.log("Accept err")
-                convo.log(err.Error())
+                convo.log("e", "accept err:", err.Error())
+                listener.Close()
                 return
             }
-            convo.log(fmt.Sprint(conn.RemoteAddr().String(), " connected"))
+            convo.log("s", conn.RemoteAddr(), " connected")
             connCh <- &tlkConn{conn: conn, mode: "srv"}
-            //return
+            listener.Close()
+            return
         }
-    }()
+    }(wg)
 
     for {
         select {
         case <-off:
-            convo.log("srv got off")
+            listener.Close()
+            convo.log("d", "srv got off")
             return
         }
     }
@@ -161,6 +174,8 @@ func main() {
     go hdl(wg)
     go seek(wg)
 	wg.Wait()
-	fmt.Println("wait done")
+    if (*debug) {
+        fmt.Println("WaitGroup done")
+    }
 	os.Exit(0)
 }

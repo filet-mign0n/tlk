@@ -25,13 +25,13 @@ func (f *Friend) Read(wg *sync.WaitGroup) {
     for {
         select {
         case <-off:
-            convo.log("f.Read got off")
+            convo.log("d", "f.Read got off")
             //time.Sleep(time.Second*4)
             return
         case line:= <-f.in:
             decryptMsg, err := decrypt(f.key, line[:len(line)-1])
             if err != nil {
-                convo.log(err.Error())
+                convo.log("e", "f.Read", err.Error())
             }
             convo.chat(decryptMsg[:len(decryptMsg)-1])
         }
@@ -43,15 +43,13 @@ func (f *Friend) ReadConn(wg *sync.WaitGroup) {
     for {
         line, err := f.rw.ReadString('\n')
         //f.conn.SetReadDeadline(time.Now().Add(1e9))
-        // doesn't seem to work like with EOF of net.Conn
         if err == io.EOF {
-            convo.log("friend left, closing conn")
+            convo.log("e", f.conn.RemoteAddr(), " disconnected")
             close(disct)
             return
         }
         if err != nil {
-            convo.log("friend ReadConn")
-            convo.log(err.Error())
+            convo.log("e", "f.ReadConn error:", err.Error())
             return
         }
         if len(line) > 0 {
@@ -69,17 +67,15 @@ func (f *Friend) Write(wg *sync.WaitGroup) {
             data = data + "\n"
             data, err := encrypt(f.key, data)
             if err != nil {
-                convo.log(err.Error())
+                convo.log("e", "f.Write error:", err.Error())
                 continue
             }
-            if *debug {
-                convo.log("crypto: " + data)
-            }
+            convo.log("d", "crypto:", data)
             data = data + "\n"
             f.rw.WriteString(data)
             f.rw.Flush()
         case <-off:
-            convo.log("Write got off")
+            convo.log("d", "f.Write got off")
             return
         }
     }
@@ -92,7 +88,7 @@ func (f *Friend) Listen(wg *sync.WaitGroup) {
     go f.Read(wg)
     go f.Write(wg)
     f.wg.Wait()
-    convo.log("friend.Listen -> f.wg.Wait() over")
+    convo.log("d", "friend.Listen -> f.wg.Wait() over")
 }
 
 func NewFriend(tc *tlkConn) *Friend {

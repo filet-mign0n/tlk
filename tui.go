@@ -1,6 +1,7 @@
 package main
 
 import (
+    "fmt"
 	"bytes"
 	"log"
 	"reflect"
@@ -13,7 +14,19 @@ import (
 const (
 	lw       = 20
 	ih       = 3
-	startMsg = "\n [press Ctrl-C to quit](fg-red)\n"
+	startMsg = `  [press ctrl-c to quit](fg-red)
+
+  @@@@@@@  @@@       @@@  @@@
+  @@@@@@@  @@@       @@@  @@@
+    @@!    @@!       @@!  !@@
+    !@!    !@!       !@!  @!!
+    @!!    @!!       @!@@!@!
+    !!!    !!!       !!@!!!
+    !!:    !!:       !!: :!!
+    :!:     :!:      :!:  !:!
+     ::     :: ::::   ::  :::
+     :     : :: : :   :   :::
+`
 )
 
 var convo *Convo
@@ -32,6 +45,7 @@ var specialKeys = map[string]string{
 }
 
 type Convo struct {
+    sync.Mutex
 	Output  *string
 	Input   *string
 	oHeight *int
@@ -41,25 +55,39 @@ type Convo struct {
 }
 
 func (c *Convo) WriteOutput(msg string) {
+    c.Lock()
 	c.LineCt++
-
 	if c.LineCt > *c.oHeight-2 {
 		c.rmFirstLine()
 		c.LineCt--
 	}
-
 	var buffer bytes.Buffer
 	buffer.WriteString(*c.Output)
 	buffer.WriteString(msg)
 	newOutput := buffer.String()
 	*c.Output = newOutput
+    c.Unlock()
 
 	t.Render(t.Body)
-
 }
 
-func (c *Convo) log(msg string) {
-	msg = "\n [$ " + msg + "](fg-green)"
+func (c *Convo) log(mode string, things ...interface{}) {
+    msg := fmt.Sprint(things...)
+    switch mode {
+    case "d":
+        if (*debug) {
+            msg = "\n [d](fg-black,bg-yellow) "+
+                  "[" + msg + "](fg-yellow)"
+        } else {
+            return
+        }
+    case "e":
+        msg = "\n [$ " + msg + "](fg-red)"
+    case "s":
+        msg = "\n [$ " + msg + "](fg-green)"
+    default:
+        msg = "\n [$ " + msg + "](fg-cyan)"
+    }
 	c.WriteOutput(msg)
 }
 
@@ -75,7 +103,9 @@ func (c *Convo) inputSubmit() {
 	}
 	if c.f != nil && c.f.conn != nil {
 		c.f.out <- *c.Input
-	} else { convo.log("no c.f?") }
+	} else {
+        convo.log("d", "tui inputSubmit no c.f or c.f.conn?")
+    }
 	prompt := "\n [@" + c.MyName + " ](fg-red)"
 	newChat := prompt + *c.Input
 	*c.Input = ""
@@ -113,31 +143,26 @@ func (c *Convo) rmFirstLine() {
 		output := *c.Output
 		*c.Output = output[idx+1:]
 		t.Render(t.Body)
-	}
+    }
 }
 
 func tui(wg *sync.WaitGroup) {
 	defer wg.Done()
-
 	err := t.Init()
 	if err != nil {
-		log.Fatalln("Cannot initialize termui")
+		log.Fatalln("cannot initialize termui")
 	}
 	defer t.Close()
-
 	th := t.TermHeight()
 
-	// The input block. termui has no edit box yet, but at the time of
-	// this writing, there is an open [pull request](https://github.com/gizak/termui/pull/129) for adding
-	// a text input widget.
+	// input block
 	ib := t.NewPar("")
 	ib.Height = ih
-	//ib.BorderLabel = "Message"
 	ib.BorderLabelFg = t.ColorYellow
 	ib.BorderFg = t.ColorYellow
 	ib.TextFgColor = t.ColorWhite
 
-	// The Output block.
+	// output block.
 	ob := t.NewPar(startMsg)
 	ob.Height = th - ih
 	ob.BorderLabel = "tlk"
@@ -145,14 +170,6 @@ func tui(wg *sync.WaitGroup) {
 	ob.BorderFg = t.ColorCyan
 	ob.TextFgColor = t.ColorWhite
 
-	// Now we need to create the layout. The blocks have gotten a size
-	// but no position. A grid layout puts everything into place.
-	// t.Body is a pre-defined grid. We add one row that contains
-	// two columns.
-	//
-	// The grid uses a 12-column system, so we have to give a "span"
-	// parameter to each column that specifies how many grid column
-	// each column occupies.
 	t.Body.AddRows(
 		t.NewRow(
 			t.NewCol(12, 0, ob, ib)))
@@ -162,14 +179,12 @@ func tui(wg *sync.WaitGroup) {
 		Input:   &ib.Text,
 		oHeight: &ob.Height,
 		MyName:  "frog",
-		LineCt:  3,
+		LineCt:  13,
 	}
-	// Render the grid.
 	t.Body.Align()
 	t.Render(t.Body)
 
-	// When the window resizes, the grid must adopt to the new size.
-	// We use a hander func for this.
+	// when the window resizes, the grid must adopt to the new size.
 	t.Handle("/sys/wnd/resize", func(t.Event) {
 		// Update the heights of output box.
 		ob.Height = t.TermHeight() - ih
@@ -177,11 +192,13 @@ func tui(wg *sync.WaitGroup) {
 		t.Body.Align()
 		t.Render(t.Body)
 	})
-    // Way to test the off channel w/o killing tui session
+    // way to test the off channel w/o killing tui session
 	t.Handle("/sys/kbd/C-d", func(t.Event) {
-        close(off)
+        if (*debug) {
+            close(off)
+        }
     })
-	// We need a way out. Ctrl-C shall stop the event loop.
+	// Ctrl-C stops the TUI event loop and kills all goroutines
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
         close(off)
 		t.StopLoop()
