@@ -12,34 +12,59 @@ import (
 const connAttempts = 3
 
 var (
-	off    = make(chan int)
-    connCh = make(chan net.Conn)
-	wg     = &sync.WaitGroup{}
+	off     chan int // closed when user exits or certain errs
+    disct   chan int // closed when friend disconnects
+    connCh  chan *tlkConn // pass around the conn to goroutines
+	wg      *sync.WaitGroup
 
-	key     = flag.String("k", "mKHlhb797Yp9olUi", "aes key")
+	key     = flag.String("k", "mKHlhb797Yp9olUi", "AES key")
 	host    = flag.String("h", "localhost", "host")
 	port    = flag.String("p", "7777", "port")
 	debug   = flag.Bool("d", false, "debug")
 	verbose = flag.Bool("v", false, "verbose")
 )
 
-func hdl() {
+type tlkConn struct {
+    conn net.Conn
+    mode string // clt or srv
+}
+
+func init() {
+    off    = make(chan int)
+    disct  = make(chan int)
+    connCh = make(chan *tlkConn)
+	wg     = &sync.WaitGroup{}
+}
+
+func hdl(wg *sync.WaitGroup) {
     defer wg.Done()
     for {
         select {
         case <-off:
             convo.log("hdl got off")
-            //time.Sleep(time.Second*4)
             return
-        case conn := <-connCh:
+        case <-disct:
+            convo.log("hdl got disct")
+            if (convo.f != nil) {
+                mode := convo.f.mode
+                convo.f.conn.Close()
+                convo.f.conn = nil
+                convo.f = nil
+                if (mode == "clt") {
+                    wg.Add(1)
+                    go seek(wg)
+                }
+            }
+            disct = make(chan int)
+        case tlkc := <-connCh:
             if convo.f == nil {
                 convo.log("handling conn")
-                friend := NewFriend(conn)
+                friend := NewFriend(tlkc)
                 convo.f = friend
                 wg.Add(1)
-                friend.Listen()
+                go friend.Listen(wg)
             } else {
-                convo.log("hdl got another conn")
+                convo.log("hdl already has open conn")
             }
         }
     }
@@ -54,7 +79,6 @@ func clt() (bool) {
             select {
             case <-off:
                 convo.log("clt got off")
-                //time.Sleep(time.Second*4)
                 return false
             default:
                 goto POLL
@@ -74,22 +98,26 @@ func clt() (bool) {
                 goto OFF
             }
             convo.log("Dial successful")
-            connCh <- conn
+            connCh <- &tlkConn{conn: conn, mode: "clt"}
             return true
         }
     return false
 }
 
 // pass wg as arg
-func srv() bool {
+func srv(wg *sync.WaitGroup) {
     defer wg.Done()
-	listener, _ := net.Listen("tcp", ":"+*port)
+	listener, e := net.Listen("tcp", ":"+*port)
+    if e != nil {
+        convo.log("srv error")
+        convo.log(e.Error())
+    }
 	convo.log(fmt.Sprint("listening on ", listener.Addr()))
     defer listener.Close()
 
     wg.Add(1)
     go func() {
-        defer wg.Done()
+      defer wg.Done()
         for {
             conn, err := listener.Accept()
             convo.log("go routine inside srv() started")
@@ -104,8 +132,8 @@ func srv() bool {
                 return
             }
             convo.log(fmt.Sprint(conn.RemoteAddr().String(), " connected"))
-            connCh <- conn
-            return
+            connCh <- &tlkConn{conn: conn, mode: "srv"}
+            //return
         }
     }()
 
@@ -113,41 +141,25 @@ func srv() bool {
         select {
         case <-off:
             convo.log("srv got off")
-            //time.Sleep(time.Second*4)
-            return false
-        }
-    }
-}
-
-func logOff() {
-    defer wg.Done()
-    for {
-        select {
-        case <-off:
-            convo.log("anon got off")
             return
         }
     }
 }
 
-func seek() {
+func seek(wg *sync.WaitGroup) {
     defer wg.Done()
-    wg.Add(1)
-    go hdl()
-	wg.Add(1)
-    go logOff()
     gotConn := clt()
     if !gotConn {
         wg.Add(1)
-        go srv()
+        go srv(wg)
     }
 }
 
 func main() {
-	wg.Add(1)
+	wg.Add(3)
 	go tui(wg)
-	wg.Add(1)
-    go seek()
+    go hdl(wg)
+    go seek(wg)
 	wg.Wait()
 	fmt.Println("wait done")
 	os.Exit(0)

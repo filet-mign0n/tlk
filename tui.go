@@ -13,7 +13,7 @@ import (
 const (
 	lw       = 20
 	ih       = 3
-	startMsg = "\n  [press Ctrl-C to quit](fg-red)\n"
+	startMsg = "\n [press Ctrl-C to quit](fg-red)\n"
 )
 
 var convo *Convo
@@ -74,7 +74,6 @@ func (c *Convo) inputSubmit() {
 		return
 	}
 	if c.f != nil && c.f.conn != nil {
-        convo.log("sending to f.out")
 		c.f.out <- *c.Input
 	} else { convo.log("no c.f?") }
 	prompt := "\n [@" + c.MyName + " ](fg-red)"

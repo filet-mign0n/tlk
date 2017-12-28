@@ -2,26 +2,26 @@ package main
 
 import (
     "io"
-//  "time"
-	"bufio"
-	"net"
-	"sync"
+    "bufio"
+    "net"
+    "sync"
 )
 
 type Friend struct {
-	conn   net.Conn
-	rw     *bufio.ReadWriter
-	wg     *sync.WaitGroup
-	out    chan string
-	in     chan string
-	off    chan int
-	status string
-	name   string
-	key    []byte
+    conn   net.Conn
+    rw     *bufio.ReadWriter
+    wg     *sync.WaitGroup
+    out    chan string
+    in     chan string
+    off    chan int
+    status string
+    name   string
+    mode   string
+    key    []byte
 }
 
-func (f *Friend) Read() {
-	defer f.wg.Done()
+func (f *Friend) Read(wg *sync.WaitGroup) {
+    defer f.wg.Done()
     for {
         select {
         case <-off:
@@ -38,7 +38,7 @@ func (f *Friend) Read() {
     }
 }
 
-func (f *Friend) ReadConn() {
+func (f *Friend) ReadConn(wg *sync.WaitGroup) {
     f.wg.Done()
     for {
         line, err := f.rw.ReadString('\n')
@@ -46,7 +46,7 @@ func (f *Friend) ReadConn() {
         // doesn't seem to work like with EOF of net.Conn
         if err == io.EOF {
             convo.log("friend left, closing conn")
-            close(off)
+            close(disct)
             return
         }
         if err != nil {
@@ -60,8 +60,8 @@ func (f *Friend) ReadConn() {
     }
 }
 
-func (f *Friend) Write() {
-	defer f.wg.Done()
+func (f *Friend) Write(wg *sync.WaitGroup) {
+    defer f.wg.Done()
     for {
         //f.conn.SetWriteDeadline(time.Now().Add(1e9))
         select {
@@ -85,34 +85,31 @@ func (f *Friend) Write() {
     }
 }
 
-func (f *Friend) Listen() {
+func (f *Friend) Listen(wg *sync.WaitGroup) {
     defer wg.Done()
-	f.wg.Add(3)
-    go f.ReadConn()
-	go f.Read()
-	go f.Write()
+    f.wg.Add(3)
+    go f.ReadConn(wg)
+    go f.Read(wg)
+    go f.Write(wg)
     f.wg.Wait()
-    convo.log("Listen() f.wg.Wait()")
-    f.conn.Close()
-    f.conn = nil
-    wg.Add(1)
-    go seek()
+    convo.log("friend.Listen -> f.wg.Wait() over")
 }
 
-func NewFriend(conn net.Conn) *Friend {
-	rw := bufio.NewReadWriter(bufio.NewReader(conn),
-		bufio.NewWriter(conn),
-	)
-	f := &Friend{
-		conn:   conn,
-		rw:     rw,
-		wg:     &sync.WaitGroup{},
-		out:    make(chan string),
-		in:     make(chan string),
-		off:    off,
-		status: "noauth",
-		name:   "fox",
-		key:    []byte(*key),
-	}
-	return f
+func NewFriend(tc *tlkConn) *Friend {
+    rw := bufio.NewReadWriter(bufio.NewReader(tc.conn),
+        bufio.NewWriter(tc.conn),
+    )
+    f := &Friend{
+        conn:   tc.conn,
+        rw:     rw,
+        wg:     &sync.WaitGroup{},
+        out:    make(chan string),
+        in:     make(chan string),
+        off:    off,
+        status: "noauth",
+        name:   "fox",
+        mode:   tc.mode,
+        key:    []byte(*key),
+    }
+    return f
 }
