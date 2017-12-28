@@ -1,8 +1,8 @@
 package main
 
 import (
-    "fmt"
 	"bytes"
+	"fmt"
 	"log"
 	"reflect"
 	"strings"
@@ -45,7 +45,7 @@ var specialKeys = map[string]string{
 }
 
 type Convo struct {
-    sync.Mutex
+	sync.Mutex
 	Output  *string
 	Input   *string
 	oHeight *int
@@ -55,7 +55,7 @@ type Convo struct {
 }
 
 func (c *Convo) WriteOutput(msg string) {
-    c.Lock()
+	c.Lock()
 	c.LineCt++
 	if c.LineCt > *c.oHeight-2 {
 		c.rmFirstLine()
@@ -66,28 +66,28 @@ func (c *Convo) WriteOutput(msg string) {
 	buffer.WriteString(msg)
 	newOutput := buffer.String()
 	*c.Output = newOutput
-    c.Unlock()
+	c.Unlock()
 
 	t.Render(t.Body)
 }
 
 func (c *Convo) log(mode string, things ...interface{}) {
-    msg := fmt.Sprint(things...)
-    switch mode {
-    case "d":
-        if (*debug) {
-            msg = "\n [d](fg-black,bg-yellow) "+
-                  "[" + msg + "](fg-yellow)"
-        } else {
-            return
-        }
-    case "e":
-        msg = "\n [$ " + msg + "](fg-red)"
-    case "s":
-        msg = "\n [$ " + msg + "](fg-green)"
-    default:
-        msg = "\n [$ " + msg + "](fg-cyan)"
-    }
+	msg := fmt.Sprint(things...)
+	switch mode {
+	case "d":
+		if *debug {
+			msg = "\n [d](fg-black,bg-yellow) " +
+				"[" + msg + "](fg-yellow)"
+		} else {
+			return
+		}
+	case "e":
+		msg = "\n [$ " + msg + "](fg-red)"
+	case "s":
+		msg = "\n [$ " + msg + "](fg-green)"
+	default:
+		msg = "\n [$ " + msg + "](fg-cyan)"
+	}
 	c.WriteOutput(msg)
 }
 
@@ -104,8 +104,8 @@ func (c *Convo) inputSubmit() {
 	if c.f != nil && c.f.conn != nil {
 		c.f.out <- *c.Input
 	} else {
-        convo.log("d", "tui inputSubmit no c.f or c.f.conn?")
-    }
+		convo.log("d", "tui inputSubmit no c.f or c.f.conn?")
+	}
 	prompt := "\n [@" + c.MyName + " ](fg-red)"
 	newChat := prompt + *c.Input
 	*c.Input = ""
@@ -143,7 +143,7 @@ func (c *Convo) rmFirstLine() {
 		output := *c.Output
 		*c.Output = output[idx+1:]
 		t.Render(t.Body)
-    }
+	}
 }
 
 func tui(wg *sync.WaitGroup) {
@@ -192,15 +192,15 @@ func tui(wg *sync.WaitGroup) {
 		t.Body.Align()
 		t.Render(t.Body)
 	})
-    // way to test the off channel w/o killing tui session
+	// way to test the off channel w/o killing tui session
 	t.Handle("/sys/kbd/C-d", func(t.Event) {
-        if (*debug) {
-            close(off)
-        }
-    })
+		if *debug {
+			close(off)
+		}
+	})
 	// Ctrl-C stops the TUI event loop and kills all goroutines
 	t.Handle("/sys/kbd/C-c", func(t.Event) {
-        close(off)
+		close(off)
 		t.StopLoop()
 		return
 	})
