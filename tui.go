@@ -40,8 +40,9 @@ var specialKeys = map[string]string{
 	"<up>":     "",
 	"<right>":  "",
 	"<down>":   "",
-	"[":        "",
-	"]":        "",
+    // TODO need to circumvent square brackets better
+	"[":        "(",
+	"]":        ")",
 }
 
 type Convo struct {
@@ -49,51 +50,81 @@ type Convo struct {
 	Output  *string
 	Input   *string
 	oHeight *int
+    oWidth  *int
 	MyName  string
 	LineCt  int
 	f       *Friend
 }
 
-func (c *Convo) WriteOutput(msg string) {
+type msg struct {
+    txt string
+    ln  int
+}
+
+var WriteOutputStartFlag = true
+
+func (c *Convo) WriteOutput(msg *msg) {
 	c.Lock()
 	c.LineCt++
-	if c.LineCt > *c.oHeight-2 {
+    if !WriteOutputStartFlag {
+        for msg.ln > *c.oWidth-2 {
+            c.LineCt++
+            msg.ln -= *c.oWidth-2
+        }
+        //msg.txt = fmt.Sprintf("\nmsg.ln=%d, width=%d", msg.ln, *c.oWidth)
+    }
+    if WriteOutputStartFlag {
+        WriteOutputStartFlag = false
+    }
+	for c.LineCt > *c.oHeight-2 {
 		c.rmFirstLine()
 		c.LineCt--
 	}
 	var buffer bytes.Buffer
 	buffer.WriteString(*c.Output)
-	buffer.WriteString(msg)
+	buffer.WriteString(msg.txt)
 	newOutput := buffer.String()
 	*c.Output = newOutput
-	c.Unlock()
-
 	t.Render(t.Body)
+	c.Unlock()
 }
 
 func (c *Convo) log(mode string, things ...interface{}) {
-	msg := fmt.Sprint(things...)
+	txt := fmt.Sprint(things...)
+    ln  := len(txt) + 3
 	switch mode {
 	case "d":
 		if *debug {
-			msg = "\n [d](fg-black,bg-yellow) " +
-				"[" + msg + "](fg-yellow)"
+			txt = "\n [d](fg-black,bg-yellow) " +
+				"[" + txt + "](fg-yellow)"
+            ln += 2
 		} else {
 			return
 		}
 	case "e":
-		msg = "\n [$ " + msg + "](fg-red)"
+        txt = "\n [!](fg-black,bg-red) " +
+            "[" + txt + "](fg-red)"
+        ln += 2
 	case "s":
-		msg = "\n [$ " + msg + "](fg-green)"
+		txt = "\n [$ " + txt + "](fg-green)"
 	default:
-		msg = "\n [$ " + msg + "](fg-cyan)"
+		txt = "\n [$ " + txt + "](fg-cyan)"
 	}
+
+    msg := &msg{
+        txt: txt,
+        ln : ln,
+    }
 	c.WriteOutput(msg)
 }
 
-func (c *Convo) chat(msg string) {
+func (c *Convo) chat(txt string) {
 	prompt := "\n [@" + c.f.name + " ](fg-blue)"
-	msg = prompt + msg
+	txt = prompt + txt
+    msg := &msg{
+        txt: txt,
+        ln : len(c.f.name+txt)+3,
+    }
 	c.WriteOutput(msg)
 }
 
@@ -104,12 +135,18 @@ func (c *Convo) inputSubmit() {
 	if c.f != nil && c.f.conn != nil {
 		c.f.out <- *c.Input
 	} else {
-		convo.log("d", "tui inputSubmit no c.f or c.f.conn?")
+		convo.log("d", "tui inputSubmit no c.f or c.f.conn")
 	}
 	prompt := "\n [@" + c.MyName + " ](fg-red)"
-	newChat := prompt + *c.Input
+	txt := prompt + *c.Input
+    msg := &msg {
+        txt: txt,
+        ln : len(c.MyName + *c.Input)+3,
+    }
+    c.Lock()
 	*c.Input = ""
-	c.WriteOutput(newChat)
+    c.Unlock()
+	c.WriteOutput(msg)
 }
 
 func (c *Convo) keyInput(key string) {
@@ -138,6 +175,8 @@ func (c *Convo) handleKey(key string) string {
 	return key
 }
 
+
+// TODO remove not per line break, but also len
 func (c *Convo) rmFirstLine() {
 	if idx := strings.Index(*c.Output, "\n"); idx != -1 {
 		output := *c.Output
@@ -178,6 +217,7 @@ func tui(wg *sync.WaitGroup) {
 		Output:  &ob.Text,
 		Input:   &ib.Text,
 		oHeight: &ob.Height,
+        oWidth:  &ob.Width,
 		MyName:  "frog",
 		LineCt:  13,
 	}
@@ -188,6 +228,7 @@ func tui(wg *sync.WaitGroup) {
 	t.Handle("/sys/wnd/resize", func(t.Event) {
 		// Update the heights of output box.
 		ob.Height = t.TermHeight() - ih
+        ob.Width = t.TermWidth()
 		t.Body.Width = t.TermWidth()
 		t.Body.Align()
 		t.Render(t.Body)

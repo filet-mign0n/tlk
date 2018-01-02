@@ -21,11 +21,16 @@ type Friend struct {
 }
 
 func (f *Friend) Verify() {
+    convo.log("l", "verifying conn")
+    /*
+    TODO use net packakge port and ip extracting methods
 	remAddr := f.conn.RemoteAddr().String()
 	if addr != remAddr {
 		convo.log("e", "Verify: addr != remAddr ", addr, " ", remAddr)
-		close(disct)
+        f.conn.Close()
 	}
+    */
+    return
 }
 
 func (f *Friend) Read(wg *sync.WaitGroup) {
@@ -60,6 +65,7 @@ func (f *Friend) ReadConn(wg *sync.WaitGroup) {
 		}
 		if err != nil {
 			convo.log("e", "f.ReadConn error:", err.Error())
+			close(disct)
 			return
 		}
 		if len(line) > 0 {

@@ -106,7 +106,12 @@ POLL:
 		tStr := t.Format("2006-01-02 15:04:05")
 		convo.log("d", "dial attempt #", i, " ", tStr)
 		if i >= connAttempts {
-			convo.log("d", "exceeded ", connAttempts, " dial attempts")
+			convo.log(
+                "d",
+                "exceeded limit of ",
+                connAttempts,
+                " dial attempts",
+            )
 			return false
 		}
 		conn, err := net.DialTimeout(
@@ -115,7 +120,7 @@ POLL:
 			5*time.Second,
 		)
 		if err != nil {
-			convo.log("e", "dial error ", err.Error())
+			convo.log("e", err.Error())
 			goto OFF
 		}
 		convo.log("s", "dial successful")
