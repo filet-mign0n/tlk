@@ -115,7 +115,7 @@ POLL:
 			return false
 		}
 		conn, err := net.DialTimeout(
-			"tcp",
+			"tcp4",
 			addr,
 			5*time.Second,
 		)
@@ -132,7 +132,7 @@ POLL:
 
 func srv(wg *sync.WaitGroup) {
 	defer wg.Done()
-	listener, e := net.Listen("tcp", ":"+*port)
+	listener, e := net.Listen("tcp4", ":"+*port)
 	if e != nil {
 		convo.log("e", "srv error: ", e.Error())
 		return
