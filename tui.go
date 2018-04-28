@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	t "github.com/gizak/termui"
+	t "github.com/airking05/termui"
 )
 
 const (
